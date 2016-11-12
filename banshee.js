@@ -5,6 +5,8 @@ var http = require('http');
 var respawn = require('respawn');
 var pidusage = require('pidusage');
 
+const STATUS = require('./src/status_codes.js');
+
 (function(config){
 
 	var workerPool = {
@@ -21,7 +23,7 @@ var pidusage = require('pidusage');
 		return;
 	}
 
-	var logger = log4js.getLogger('banshee');		
+	var logger = log4js.getLogger('banshee');
 
 	var handleRequest = function(req, res){
 
@@ -29,10 +31,10 @@ var pidusage = require('pidusage');
 		try{
 
 			if (req.url === '/favicon.ico') {
-				
-				res.writeHead(200, {'Content-Type': 'image/x-icon'} );
+
+				res.writeHead(STATUS.SUCCESS, {'Content-Type': 'image/x-icon'} );
 				res.end();
-				
+
 				return;
 
 			}
@@ -46,10 +48,10 @@ var pidusage = require('pidusage');
 			var poolCheckInterval = setInterval(function(){
 
 				if((poolCheckCount * config.workerPoolCheckInterval) >= config.requestTimeout){
-					
+
 					clearInterval(poolCheckInterval);
 
-					res.statusCode = 429;
+					res.statusCode = STATUS.TOO_MANY_REQUESTS;
 					res.end();
 
 				} else {
@@ -75,8 +77,8 @@ var pidusage = require('pidusage');
 
   			logger.error('Request error: ' + error.message);
 
-  			res.statusCode = 500;
-  			res.end;  			
+  			res.statusCode = STATUS.ERROR;
+  			res.end;
 
   			return;
   		}
@@ -89,7 +91,7 @@ var pidusage = require('pidusage');
 
 			if(!workerPool.workers || !workerPool.workers[workerIndex]){
 	  			logger.error('No worker (' + workerIndex + ') available for request ' );
-	  			res.statusCode = 500;
+	  			res.statusCode = STATUS.ERROR;
 				return;
 			}
 
@@ -115,7 +117,7 @@ var pidusage = require('pidusage');
 
 		    		resp.pipe(res, {
 		      			end: true
-		    		});	  				
+		    		});
 
 	  			} catch(error){
 	  				logger.error('Error on worker request: ' + error.message);
@@ -130,11 +132,11 @@ var pidusage = require('pidusage');
 		  			logger.error('Worker load timeout');
 
 	  				if(workerPool.free.indexOf(workerIndex) < 0){
-	  					workerPool.free.push(workerIndex);	
+	  					workerPool.free.push(workerIndex);
 	  					logger.debug('Added worker back into active pool ' + workerIndex);
 	  				}
 
-		  			res.statusCode = 504;
+		  			res.statusCode = STATUS.TIMEOUT;
 		  			res.end;
 
 	  			} catch(error){
@@ -150,11 +152,11 @@ var pidusage = require('pidusage');
 		  			logger.error('Worker error: ' + error.message);
 
 	  				if(workerPool.free.indexOf(workerIndex) < 0){
-	  					workerPool.free.push(workerIndex);	
+	  					workerPool.free.push(workerIndex);
 	  					logger.debug('Added worker back into active pool ' + workerIndex);
 	  				}
 
-		  			res.statusCode = 500;
+		  			res.statusCode = STATUS.ERROR;
 		  			res.end;
 
 	  			} catch(error){
@@ -194,16 +196,16 @@ var pidusage = require('pidusage');
 									} else {
 										workerPool.free.push(workerIndex);
 									}
-								    
-								});		  						
+
+								});
 		  					}
-		  					
+
 		  				}
-		  				
+
 		  			}
 
 	  			} catch(error){
-					logger.error('Error on request finish:' + error.message);
+						logger.error('Error on request finish:' + error.message);
 	  			}
 
 	  		});
@@ -215,15 +217,15 @@ var pidusage = require('pidusage');
 					workerRequest.abort();
 
 	  				if(workerPool.free.indexOf(workerIndex) < 0){
-	  					workerPool.free.push(workerIndex);	
+	  					workerPool.free.push(workerIndex);
 	  					logger.debug('Added worker back into active pool ' + workerIndex);
 	  				}
 
 				} catch(error){
-					logger.error('Error on request close:' + error.message);	
+					logger.error('Error on request close:' + error.message);
 				}
-				
-			});	
+
+			});
 
 			if(workerRequest){
 
@@ -232,17 +234,17 @@ var pidusage = require('pidusage');
 		  		});
 
 			} else {
-				res.statusCode = 429;
+				res.statusCode = STATUS.TOO_MANY_REQUESTS;
 			}
 
   		} catch(error){
 
   			logger.error('Proxy request error: ' + error.message + '\r\n' + error.stack);
 
-  			res.statusCode = 500;
+  			res.statusCode = STATUS.ERROR;
 
   			return;
-  		}		
+  		}
 
 	}
 
@@ -302,15 +304,15 @@ var pidusage = require('pidusage');
 		        		kill: 1000,
 		        		stdio: ['pipe', 'pipe', 'pipe']
 	      			}
-	      		);	
+	      		);
 
 				worker.process.on('stdout', function(data){
 					logger.debug('Worker:' + data);
-				});	      		
+				});
 
 				worker.process.on('stderr', function(data){
 					logger.error('Worker:' + data);
-				});	      						
+				});
 
 				worker.process.on('warn', function(err){
 					logger.warn('Worker:' + err);
@@ -323,28 +325,28 @@ var pidusage = require('pidusage');
 				worker.process.on('spawn', function(process){
 
 					if(process !== null){
-						
-						logger.info('Spawning worker id: ' + this.env.id + ' port: ' + this.env.port);						
+
+						logger.info('Spawning worker id: ' + this.env.id + ' port: ' + this.env.port);
 
 						var workerIndex = this.env.id;
 
 						setTimeout(function(){
 							workerPool.free.push(workerIndex);
 						}, config.workerStartupPause);
-						
+
 					}
 
-				});			
+				});
 
 	      		workerPool.workers[i] = worker;
-				
+
 	      		workerPool.workers[i].process.start();
 
 	      		workerPort++;
 
 	      		worker = null;
 
-			}			
+			}
 
 		} catch(error){
 			logger.error('Error on PhantomJS pool start:' + error.message);
